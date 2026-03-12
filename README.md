@@ -9,9 +9,9 @@ Since I couldn't find a way of directly modifying light color properties in SFM,
 
 - Interactive color wheel
 - RGB values (0–1 range)
-- Copy RGB values button
-- Preview compensates for SFM light desaturation
-- Dockable inside the Animation Set Editor
+- Copy RGB values buttons
+- Preview compensates SFM's light desaturation
+- Attachable to any place inside SFM's interface
 
 ---
 
