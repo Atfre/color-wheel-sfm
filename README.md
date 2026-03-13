@@ -1,4 +1,4 @@
-# 🎨 Color Wheel Script
+# 🎨 Color Wheel Script [BETA]
 
 A Color Wheel tool for Source Filmmaker built using **Python**.
 This script allows users to select a color for SFM lights, featuring RGB values (0–1 range) and a SFM desaturation preview compensation for more accurate color matching.
