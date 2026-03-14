@@ -1,15 +1,15 @@
 # 🎨 Color Wheel Script
 
 A Color Wheel tool for Source Filmmaker built using **Python**.
-This script allows users to select a color for SFM lights and modify the brightness (intensity), featuring RGB values (0–1 range) and a SFM desaturation preview compensation for more accurate color matching.
+This script allows users to select a color for SFM lights, modify the brightness (intensity), a desaturation compensation for more accurate color matching and an option to see and copy the HEX Code of the selected color.
 
 ## ✨ Features
 
 - Interactive color wheel
-- RGB values (0–1 range)
+- Brightness/Intensity vertical slider
 - Preview that compensates SFM's light desaturation
 - Automatically changes the color of the light
-- Copy RGB values buttons
+- HEX Code and a button to copy it
 
 ---
 
