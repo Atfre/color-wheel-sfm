@@ -3,7 +3,9 @@
 # A color wheel tool that lets the user modify the color of SFM lights with a color wheel, modify
 # the intensity/brightness of the light and copy the HEX Code.
 #
-# Author: Aftre
+# Author: Aftre / Discord: aftre
+#
+# This script is based off msu355 and an0nymooose's scripts for a few solutions and fixes.
 
 import math
 import sfm
