@@ -1,11 +1,12 @@
 # Color Wheel
 #
-# A color wheel tool that lets the user modify the color of SFM lights with a color wheel, modify
-# the intensity/brightness of the light and copy the HEX Code.
+# A complete script that lets the user modify different aspects of SFM's lights, introducing a  
+# color wheel for easy color picking, sliders for different properties and divided by sections
+# and an option to see and copy the HEX code of the currently selected color (idea by Dani3D).
 #
-# Author: Aftre / Discord: aftre
+# Author: Aftre
 #
-# This script is based off msu355 and an0nymooose's scripts for a few solutions and fixes.
+# This script is based off Fames, msu355 and an0nymooose's scripts for a few solutions and fixes.
 
 import math
 import sfm
@@ -25,56 +26,64 @@ def getChannel(animSet, controlName):
         rootGroup = animSet.GetRootControlGroup()
         if rootGroup is None:
             return None
-
         ctrl = rootGroup.FindControlByName(controlName, True)
         if ctrl is None:
             return None
-
         return ctrl.channel
-
     except Exception as e:
         return None
-
 
 def setChannelAllKeys(channel, value):
     try:
         layer = channel.log.GetLayer(0)
         count = layer.GetKeyCount()
-
         if count == 0:
             # If there's no keys, then inserts one affecting the whole timeline
             channel.log.InsertKey(vs.DmeTime_t(0), value, 3)
             layer.values[0] = value
         else:
-            # Overwrite every existing key with the new color value
             for i in range(count):
                 layer.values[i] = value
-
         return True
-
     except Exception as e:
         return False
-
 
 def applyLightColor(animSet, r, g, b):
     if animSet is None:
         return
-
     chR = getChannel(animSet, "color_red")
     chG = getChannel(animSet, "color_green")
     chB = getChannel(animSet, "color_blue")
-
     if not chR or not chG or not chB:
         return
-
     dm.StartUndo("ColorWheel", "ColorWheel", 0)
     setChannelAllKeys(chR, r)
     setChannelAllKeys(chG, g)
     setChannelAllKeys(chB, b)
     dm.FinishUndo()
-
-    # Refresh viewport
     sfmApp.SetHeadTimeInFrames(sfmApp.GetHeadTimeInFrames())
+
+
+def applyControlValue(animSet, controlName, value):
+    ch = getChannel(animSet, controlName)
+    if ch is None:
+        return
+    dm.StartUndo("ColorWheel", "ColorWheel", 0)
+    setChannelAllKeys(ch, value)
+    dm.FinishUndo()
+    sfmApp.SetHeadTimeInFrames(sfmApp.GetHeadTimeInFrames())
+
+def applyBoolValue(animSet, controlName, value):
+    try:
+        lightElem = animSet.light
+        if lightElem is None:
+            return
+        dm.StartUndo("ColorWheel", "ColorWheel", 0)
+        lightElem.SetValue(controlName, value)
+        dm.FinishUndo()
+        sfmApp.SetHeadTimeInFrames(sfmApp.GetHeadTimeInFrames())
+    except Exception as e:
+        pass
 
 #  Color Wheel thing
 class COLORWheel(QtGui.QWidget):
@@ -82,15 +91,15 @@ class COLORWheel(QtGui.QWidget):
 
     def __init__(self):
         super(COLORWheel, self).__init__()
-        self.setMinimumSize(240, 240)
-        self.setMaximumSize(240, 240)
+        self.setMinimumSize(220, 220)
+        self.setMaximumSize(220, 220)
 
-        self._radius      = 116
-        self._selectorPos = QtCore.QPoint(120, 120)
+        self._radius      = 106
+        self._selectorPos = QtCore.QPoint(110, 110)
         self._cachedWheel = None
         self._generateWheel()
 
-        # System to avoid lagging SFM
+        # System to avoid lagging SFM and making it explode or something
         self._applyTimer   = QtCore.QTimer(self)
         self._applyTimer.setSingleShot(True)
         self._applyTimer.setInterval(40)
@@ -101,13 +110,13 @@ class COLORWheel(QtGui.QWidget):
         size = self._radius * 2
         image = QtGui.QImage(size, size, QtGui.QImage.Format_RGB32)
         cx = cy = self._radius
-
         for y in range(size):
             for x in range(size):
                 dx = x - cx
                 dy = y - cy
                 dist = math.sqrt(dx * dx + dy * dy)
                 if dist <= self._radius:
+
                     # Blender layout
                     angle = math.degrees(math.atan2(-dx, dy))
                     if angle < 0:
@@ -119,17 +128,14 @@ class COLORWheel(QtGui.QWidget):
                     image.setPixel(x, y, c.rgb())
                 else:
                     image.setPixel(x, y, QtGui.QColor(40, 40, 40).rgb())
-
         self._cachedWheel = QtGui.QPixmap.fromImage(image)
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-
         ox = (self.width()  - self._radius * 2) / 2
         oy = (self.height() - self._radius * 2) / 2
         painter.drawPixmap(ox, oy, self._cachedWheel)
-
         sx = self._selectorPos.x()
         sy = self._selectorPos.y()
         painter.setPen(QtGui.QPen(QtCore.Qt.white, 2))
@@ -151,13 +157,11 @@ class COLORWheel(QtGui.QWidget):
         dx = pos.x() - cx
         dy = pos.y() - cy
         dist = math.sqrt(dx * dx + dy * dy)
-
         if dist > self._radius:
             angle = math.atan2(dy, dx)
             dx = math.cos(angle) * self._radius
             dy = math.sin(angle) * self._radius
             dist = self._radius
-
         self._selectorPos = QtCore.QPoint(int(cx + dx), int(cy + dy))
         self.update()
 
@@ -166,10 +170,8 @@ class COLORWheel(QtGui.QWidget):
         if angle_deg < 0:
             angle_deg += 360
         sat = min(dist / self._radius, 1.0)
-
         color = QtGui.QColor()
         color.setHsv(int(angle_deg), int(sat * 255), 255)
-
         self._pendingColor = color
         if not self._applyTimer.isActive():
             self._applyTimer.start()
@@ -179,26 +181,24 @@ class COLORWheel(QtGui.QWidget):
             self.colorChanged.emit(self._pendingColor)
             self._pendingColor = None
 
-# Vertical gradient brightness slider
+# Vertical color brightness slider
 class BrightnessSlider(QtGui.QWidget):
     valueChanged = QtCore.Signal(float)
 
     def __init__(self, parent=None):
         super(BrightnessSlider, self).__init__(parent)
-        self.setFixedWidth(20)
-        self.setMinimumHeight(240)
+        self.setFixedWidth(18)
+        self.setMinimumHeight(220)
         self._value = 1.0
         self._dragging = False
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-
         gradient = QtGui.QLinearGradient(0, 0, 0, self.height())
         gradient.setColorAt(0.0, QtGui.QColor(255, 255, 255))
         gradient.setColorAt(1.0, QtGui.QColor(0, 0, 0))
         painter.fillRect(self.rect(), QtGui.QBrush(gradient))
-
         y = int((1.0 - self._value) * self.height())
         painter.setPen(QtGui.QPen(QtCore.Qt.white, 2))
         painter.drawLine(0, y, self.width(), y)
@@ -224,6 +224,87 @@ class BrightnessSlider(QtGui.QWidget):
     def getValue(self):
         return self._value
 
+class PropSlider(QtGui.QWidget):
+    def __init__(self, label, minVal, maxVal, defaultVal, decimals=2, parent=None):
+        super(PropSlider, self).__init__(parent)
+        self._min = minVal
+        self._max = maxVal
+        self._decimals = decimals
+        layout = QtGui.QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.setLayout(layout)
+        lbl = QtGui.QLabel(label)
+        lbl.setFixedWidth(130)
+        lbl.setStyleSheet("font-size: 11px;")
+        layout.addWidget(lbl)
+        self.slider = QtGui.QSlider(QtCore.Qt.Horizontal)
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(1000)
+        self.slider.setValue(self._toSlider(defaultVal))
+        self.slider.valueChanged.connect(self._onSlider)
+        layout.addWidget(self.slider)
+        self.valLabel = QtGui.QLabel(("%%.%df" % decimals) % defaultVal)
+        self.valLabel.setFixedWidth(46)
+        self.valLabel.setStyleSheet("font-size: 11px;")
+        layout.addWidget(self.valLabel)
+
+    def _toSlider(self, val):
+        return int((val - self._min) / (self._max - self._min) * 1000)
+
+    def _fromSlider(self, tick):
+        return self._min + (self._max - self._min) * tick / 1000.0
+
+    def _onSlider(self, tick):
+        val = self._fromSlider(tick)
+        self.valLabel.setText(("%%.%df" % self._decimals) % val)
+
+    def getValue(self):
+        return self._fromSlider(self.slider.value())
+
+    def connectChanged(self, fn):
+        self.slider.valueChanged.connect(lambda _: fn(self.getValue()))
+
+# Collapsible sections for each propertty
+class CollapsibleSection(QtGui.QWidget):
+    def __init__(self, title, parent=None):
+        super(CollapsibleSection, self).__init__(parent)
+        self._title = title
+        self._layout = QtGui.QVBoxLayout()
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(2)
+        self.setLayout(self._layout)
+
+        self._btn = QtGui.QPushButton("[+] " + title)
+        self._btn.setStyleSheet("text-align: left; font-size: 11px; font-weight: bold; padding: 2px;")
+        self._btn.setFlat(True)
+        self._btn.clicked.connect(self._toggle)
+        self._layout.addWidget(self._btn)
+
+        self._body = QtGui.QWidget()
+        self._bodyLayout = QtGui.QVBoxLayout()
+        self._bodyLayout.setContentsMargins(8, 0, 0, 4)
+        self._bodyLayout.setSpacing(2)
+        self._body.setLayout(self._bodyLayout)
+        self._body.setVisible(False)
+        self._layout.addWidget(self._body)
+
+    def _toggle(self):
+        visible = not self._body.isVisible()
+        self._body.setVisible(visible)
+        self._btn.setText(("[-] " if visible else "[+] ") + self._title)
+
+    def addWidget(self, w):
+        self._bodyLayout.addWidget(w)
+
+    def addRow(self, *widgets):
+        row = QtGui.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        for w in widgets:
+            row.addWidget(w)
+        self._bodyLayout.addLayout(row)
+
 # Window Code meow
 class ColorWheelWindow(QtGui.QWidget):
     def __init__(self, animSet):
@@ -232,47 +313,164 @@ class ColorWheelWindow(QtGui.QWidget):
         self.targetAnimSet = animSet
         self.setWindowTitle(ProductName)
         self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowStaysOnTopHint)
-        self.setFixedWidth(300)
+        self.setFixedWidth(340)
 
+        scroll = QtGui.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+        inner = QtGui.QWidget()
         mainLayout = QtGui.QVBoxLayout()
-        mainLayout.setSpacing(8)
-        mainLayout.setContentsMargins(10, 10, 10, 10)
-        self.setLayout(mainLayout)
+        mainLayout.setSpacing(4)
+        mainLayout.setContentsMargins(8, 8, 8, 8)
+        inner.setLayout(mainLayout)
+        scroll.setWidget(inner)
+
+        outerLayout = QtGui.QVBoxLayout()
+        outerLayout.setContentsMargins(0, 0, 0, 0)
+        outerLayout.addWidget(scroll)
+        self.setLayout(outerLayout)
+        self.setMinimumHeight(420)
+        self.setMaximumHeight(700)
 
         # Window Title
         title = QtGui.QLabel("Color Wheel")
-        title.setStyleSheet("font-size:16px; font-weight:bold;")
+        title.setStyleSheet("font-size:15px; font-weight:bold;")
         mainLayout.addWidget(title)
 
         # Show which light is selected or affected by the script
-        lightName = animSet.GetName() if animSet else "Meow"
-        self.targetLabel = QtGui.QLabel("Selected Light: %s" % lightName)
+        lightName = animSet.GetName() if animSet else "None"
+        self.targetLabel = QtGui.QLabel("Editing: %s" % lightName)
         self.targetLabel.setStyleSheet("color: #aaaaaa; font-size: 11px;")
         mainLayout.addWidget(self.targetLabel)
 
+        # Color wheel + colors intensity slider
         wheelRow = QtGui.QHBoxLayout()
         wheelRow.setSpacing(6)
-
         self.wheel = COLORWheel()
         self.wheel.colorChanged.connect(self.onColorChanged)
         wheelRow.addWidget(self.wheel)
-
-        # Intensity (Brightness) vertical slider
         self.brightnessSlider = BrightnessSlider()
-        self.brightnessSlider.valueChanged.connect(self.onBrightnessChanged)
+        self.brightnessSlider.valueChanged.connect(self.onIntensityChanged)
         wheelRow.addWidget(self.brightnessSlider, alignment=QtCore.Qt.AlignVCenter)
-
         mainLayout.addLayout(wheelRow)
 
         # HEX code display and copy button
         hexRow = QtGui.QHBoxLayout()
         self.hexLabel = QtGui.QLabel("#FFFFFF")
-        self.hexLabel.setStyleSheet("font-size: 13px;")
+        self.hexLabel.setStyleSheet("font-size: 12px;")
         self.copyHexBtn = QtGui.QPushButton("Copy HEX")
         self.copyHexBtn.clicked.connect(self.copyHex)
         hexRow.addWidget(self.hexLabel)
         hexRow.addWidget(self.copyHexBtn)
         mainLayout.addLayout(hexRow)
+
+        # Other Properties
+        # Intensity
+        sec0 = CollapsibleSection("Intensity")
+        self.s_intensity = PropSlider("Intensity", 0.0, 1.0, 1.0)
+        self.s_intensity.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "intensity", v))
+        sec0.addWidget(self.s_intensity)
+        mainLayout.addWidget(sec0)
+
+        # Radius
+        sec1 = CollapsibleSection("Radius")
+        self.s_radius = PropSlider("Radius", 0.0, 1.0, 1.0, 1)
+        self.s_radius.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "radius", v))
+        sec1.addWidget(self.s_radius)
+        mainLayout.addWidget(sec1)
+
+        # FOV
+        sec2 = CollapsibleSection("Field of View")
+        self.s_hFov = PropSlider("Horizontal FOV", 0.0, 1.0, 1.0, 1)
+        self.s_vFov = PropSlider("Vertical FOV", 0.0, 1.0, 1.0, 1)
+        self.s_hFov.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "horizontalFOV", v))
+        self.s_vFov.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "verticalFOV", v))
+        sec2.addWidget(self.s_hFov)
+        sec2.addWidget(self.s_vFov)
+        mainLayout.addWidget(sec2)
+
+        # Shadows
+        sec3 = CollapsibleSection("Shadows")
+        self.s_shadowFilter = PropSlider("ShadowFilterSize", 0.0, 1.0, 1.0)
+        self.s_shadowAtten  = PropSlider("ShadowAtten", 0.0, 1.0, 0.0)
+        self.s_shadowDepth  = PropSlider("shadowDepthBias", 0.0, 1.0, 0.0)
+        self.s_shadowSlope  = PropSlider("shadowSlopeScale", 0.0, 1.0, 1.0)
+        self.s_shadowFilter.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "shadowFilterSize", v))
+        self.s_shadowAtten.connectChanged( lambda v: applyControlValue(self.targetAnimSet, "shadowAtten", v))
+        self.s_shadowDepth.connectChanged( lambda v: applyControlValue(self.targetAnimSet, "shadowDepthBias", v))
+        self.s_shadowSlope.connectChanged( lambda v: applyControlValue(self.targetAnimSet, "shadowSlopeScaleDepthBias", v))
+        sec3.addWidget(self.s_shadowFilter)
+        sec3.addWidget(self.s_shadowAtten)
+        sec3.addWidget(self.s_shadowDepth)
+        sec3.addWidget(self.s_shadowSlope)
+        mainLayout.addWidget(sec3)
+
+        # Distance
+        sec4 = CollapsibleSection("Distance")
+        self.s_minDist   = PropSlider("minDistance", 0.0, 1.0, 0.0, 1)
+        self.s_maxDist   = PropSlider("maxDistance", 0.0, 1.0, 1.0, 1)
+        self.s_farZAtten = PropSlider("farZAtten",   0.0, 1.0, 1.0, 1)
+        self.s_minDist.connectChanged(  lambda v: applyControlValue(self.targetAnimSet, "minDistance", v))
+        self.s_maxDist.connectChanged(  lambda v: applyControlValue(self.targetAnimSet, "maxDistance", v))
+        self.s_farZAtten.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "farZAtten", v))
+        sec4.addWidget(self.s_minDist)
+        sec4.addWidget(self.s_maxDist)
+        sec4.addWidget(self.s_farZAtten)
+        mainLayout.addWidget(sec4)
+
+        # Attenuation
+        sec5 = CollapsibleSection("Attenuation")
+        self.s_constAtten  = PropSlider("Constant",  0.0, 1.0, 0.0)
+        self.s_linearAtten = PropSlider("Linear",    0.0, 1.0, 0.0)
+        self.s_quadAtten   = PropSlider("Quadratic", 0.0, 1.0, 1.0)
+        self.s_constAtten.connectChanged( lambda v: applyControlValue(self.targetAnimSet, "constantAttenuation", v))
+        self.s_linearAtten.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "linearAttenuation", v))
+        self.s_quadAtten.connectChanged(  lambda v: applyControlValue(self.targetAnimSet, "quadraticAttenuation", v))
+        sec5.addWidget(self.s_constAtten)
+        sec5.addWidget(self.s_linearAtten)
+        sec5.addWidget(self.s_quadAtten)
+        mainLayout.addWidget(sec5)
+
+        # Volumetric
+        sec6 = CollapsibleSection("Volumetrics")
+        self.s_volIntensity = PropSlider("volumetricIntensity", 0.0, 1.0, 1.0)
+        self.s_noiseStr     = PropSlider("noiseStrength",       0.0, 1.0, 0.0)
+        self.s_volIntensity.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "volumetricIntensity", v))
+        self.s_noiseStr.connectChanged(    lambda v: applyControlValue(self.targetAnimSet, "noiseStrength", v))
+        sec6.addWidget(self.s_volIntensity)
+        sec6.addWidget(self.s_noiseStr)
+        mainLayout.addWidget(sec6)
+
+        # UberLight
+        sec7 = CollapsibleSection("UberLights")
+        self.s_width      = PropSlider("width",      0.0, 1.0, 1.0, 1)
+        self.s_edgeWidth  = PropSlider("edgeWidth",  0.0, 1.0, 1.0, 1)
+        self.s_height     = PropSlider("height",     0.0, 1.0, 1.0, 1)
+        self.s_edgeHeight = PropSlider("edgeHeight", 0.0, 1.0, 1.0, 1)
+        self.s_width.connectChanged(     lambda v: applyControlValue(self.targetAnimSet, "width", v))
+        self.s_edgeWidth.connectChanged( lambda v: applyControlValue(self.targetAnimSet, "edgeWidth", v))
+        self.s_height.connectChanged(    lambda v: applyControlValue(self.targetAnimSet, "height", v))
+        self.s_edgeHeight.connectChanged(lambda v: applyControlValue(self.targetAnimSet, "edgeHeight", v))
+        sec7.addWidget(self.s_width)
+        sec7.addWidget(self.s_edgeWidth)
+        sec7.addWidget(self.s_height)
+        sec7.addWidget(self.s_edgeHeight)
+
+        uberRow = QtGui.QHBoxLayout()
+        uberRow.setContentsMargins(0, 2, 0, 0)
+        uberLbl = QtGui.QLabel("UberLight")
+        uberLbl.setStyleSheet("font-size: 11px;")
+        self.uberCheck = QtGui.QCheckBox()
+        self.uberCheck.setChecked(False)
+        self.uberCheck.stateChanged.connect(lambda s: applyBoolValue(self.targetAnimSet, "uberlight", bool(s)))
+        uberRow.addWidget(uberLbl)
+        uberRow.addStretch()
+        uberRow.addWidget(self.uberCheck)
+        sec7._bodyLayout.addLayout(uberRow)
+        mainLayout.addWidget(sec7)
+
+        mainLayout.addStretch()
 
         self.currentColor    = QtGui.QColor(255, 255, 255)
         self.currentR        = 1.0
@@ -288,18 +486,18 @@ class ColorWheelWindow(QtGui.QWidget):
         self.hexLabel.setText("#%02X%02X%02X" % (color.red(), color.green(), color.blue()))
         self._applyToLight()
 
-    def onBrightnessChanged(self, value):
+    def onIntensityChanged(self, value):
         self.brightnessScale = value
         self._applyToLight()
-
-    def copyHex(self):
-        QtGui.QApplication.clipboard().setText(self.hexLabel.text())
 
     def _applyToLight(self):
         r = min(self.currentR * self.brightnessScale, 1.0)
         g = min(self.currentG * self.brightnessScale, 1.0)
         b = min(self.currentB * self.brightnessScale, 1.0)
         applyLightColor(self.targetAnimSet, r, g, b)
+
+    def copyHex(self):
+        QtGui.QApplication.clipboard().setText(self.hexLabel.text())
 
 try:
     currentAnimSet = sfm.GetCurrentAnimationSet()
