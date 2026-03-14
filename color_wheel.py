@@ -1,7 +1,7 @@
 # Color Wheel
 #
-# A color wheel widget that lets the user modify the color of SFM lights with a color wheel, copy its
-# RGB values and modify the intensity/brightness of the light.
+# A color wheel tool that lets the user modify the color of SFM lights with a color wheel, modify
+# the intensity/brightness of the light and copy the HEX Code.
 #
 # Author: Aftre
 
@@ -22,18 +22,15 @@ def getChannel(animSet, controlName):
     try:
         rootGroup = animSet.GetRootControlGroup()
         if rootGroup is None:
-            print("[Color Wheel] rootGroup is equal none")
             return None
 
         ctrl = rootGroup.FindControlByName(controlName, True)
         if ctrl is None:
-            print("[Color Wheel] Control not found: %s" % controlName)
             return None
 
         return ctrl.channel
 
     except Exception as e:
-        print("[Color Wheel] getChannel error: %s" % e)
         return None
 
 
@@ -46,7 +43,6 @@ def setChannelAllKeys(channel, value):
             # If there's no keys, then inserts one affecting the whole timeline
             channel.log.InsertKey(vs.DmeTime_t(0), value, 3)
             layer.values[0] = value
-            print("[Color Wheel] No keys found, inserted one at 0")
         else:
             # Overwrite every existing key with the new color value
             for i in range(count):
@@ -55,13 +51,11 @@ def setChannelAllKeys(channel, value):
         return True
 
     except Exception as e:
-        print("[Color Wheel] setChannelAllKeys error: %s" % e)
         return False
 
 
 def applyLightColor(animSet, r, g, b):
     if animSet is None:
-        print("[Color Wheel] No AnimationSet targeted.")
         return
 
     chR = getChannel(animSet, "color_red")
@@ -69,7 +63,6 @@ def applyLightColor(animSet, r, g, b):
     chB = getChannel(animSet, "color_blue")
 
     if not chR or not chG or not chB:
-        print("[Color Wheel] Couldnt get the color channels.")
         return
 
     dm.StartUndo("ColorWheel", "ColorWheel", 0)
@@ -113,12 +106,14 @@ class COLORWheel(QtGui.QWidget):
                 dy = y - cy
                 dist = math.sqrt(dx * dx + dy * dy)
                 if dist <= self._radius:
-                    angle = math.degrees(math.atan2(dy, dx))
+                    # Blender layout
+                    angle = math.degrees(math.atan2(-dx, dy))
                     if angle < 0:
                         angle += 360
                     sat = dist / self._radius
                     c = QtGui.QColor()
-                    c.setHsv(int(angle), int(sat * 255), 255)
+                    # 90% desaturation to make it similar to SFMs desaturated colors
+                    c.setHsv(int(angle), int(sat * 255 * 0.90), 255)
                     image.setPixel(x, y, c.rgb())
                 else:
                     image.setPixel(x, y, QtGui.QColor(40, 40, 40).rgb())
@@ -164,7 +159,8 @@ class COLORWheel(QtGui.QWidget):
         self._selectorPos = QtCore.QPoint(int(cx + dx), int(cy + dy))
         self.update()
 
-        angle_deg = math.degrees(math.atan2(dy, dx))
+        # Blender layout
+        angle_deg = math.degrees(math.atan2(-dx, dy))
         if angle_deg < 0:
             angle_deg += 360
         sat = min(dist / self._radius, 1.0)
@@ -181,6 +177,51 @@ class COLORWheel(QtGui.QWidget):
             self.colorChanged.emit(self._pendingColor)
             self._pendingColor = None
 
+# Vertical gradient brightness slider
+class BrightnessSlider(QtGui.QWidget):
+    valueChanged = QtCore.Signal(float)
+
+    def __init__(self, parent=None):
+        super(BrightnessSlider, self).__init__(parent)
+        self.setFixedWidth(20)
+        self.setMinimumHeight(240)
+        self._value = 1.0
+        self._dragging = False
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        gradient = QtGui.QLinearGradient(0, 0, 0, self.height())
+        gradient.setColorAt(0.0, QtGui.QColor(255, 255, 255))
+        gradient.setColorAt(1.0, QtGui.QColor(0, 0, 0))
+        painter.fillRect(self.rect(), QtGui.QBrush(gradient))
+
+        y = int((1.0 - self._value) * self.height())
+        painter.setPen(QtGui.QPen(QtCore.Qt.white, 2))
+        painter.drawLine(0, y, self.width(), y)
+        painter.setPen(QtGui.QPen(QtCore.Qt.black, 1))
+        painter.drawLine(0, y + 2, self.width(), y + 2)
+
+    def mousePressEvent(self, event):
+        self._dragging = True
+        self._updateValue(event.pos().y())
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            self._updateValue(event.pos().y())
+
+    def mouseReleaseEvent(self, event):
+        self._dragging = False
+
+    def _updateValue(self, y):
+        self._value = 1.0 - max(0.0, min(1.0, float(y) / self.height()))
+        self.update()
+        self.valueChanged.emit(self._value)
+
+    def getValue(self):
+        return self._value
+
 # Window Code meow
 class ColorWheelWindow(QtGui.QWidget):
     def __init__(self, animSet):
@@ -189,7 +230,7 @@ class ColorWheelWindow(QtGui.QWidget):
         self.targetAnimSet = animSet
         self.setWindowTitle(ProductName)
         self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowStaysOnTopHint)
-        self.setFixedWidth(280)
+        self.setFixedWidth(300)
 
         mainLayout = QtGui.QVBoxLayout()
         mainLayout.setSpacing(8)
@@ -202,102 +243,55 @@ class ColorWheelWindow(QtGui.QWidget):
         mainLayout.addWidget(title)
 
         # Show which light is selected or affected by the script
-        lightName = animSet.GetName() if animSet else "None"
+        lightName = animSet.GetName() if animSet else "Meow"
         self.targetLabel = QtGui.QLabel("Selected Light: %s" % lightName)
         self.targetLabel.setStyleSheet("color: #aaaaaa; font-size: 11px;")
         mainLayout.addWidget(self.targetLabel)
 
-        # Color Wheel
+        wheelRow = QtGui.QHBoxLayout()
+        wheelRow.setSpacing(6)
+
         self.wheel = COLORWheel()
         self.wheel.colorChanged.connect(self.onColorChanged)
-        mainLayout.addWidget(self.wheel, alignment=QtCore.Qt.AlignHCenter)
+        wheelRow.addWidget(self.wheel)
 
-        # Color preview with desaturation, matching SFM's color system
-        self.preview = QtGui.QLabel()
-        self.preview.setFixedHeight(60)
-        self.preview.setMinimumWidth(240)
-        self.preview.setAlignment(QtCore.Qt.AlignCenter)
-        self.preview.setToolTip("Preview of how SFM will display the color (20% desaturated)")
-        mainLayout.addWidget(self.preview, alignment=QtCore.Qt.AlignHCenter)
-
-        # RGB
-        self.rgbLabel = QtGui.QLabel()
-        mainLayout.addWidget(self.rgbLabel)
-
-        # Intensity slider
-        intensityLabel = QtGui.QLabel("Intensity (Brightness)")
-        intensityLabel.setStyleSheet("margin-top:4px;")
-        mainLayout.addWidget(intensityLabel)
-
-        intensityRow = QtGui.QHBoxLayout()
-        self.brightnessSlider = QtGui.QSlider(QtCore.Qt.Horizontal)
-        self.brightnessSlider.setMinimum(0)
-        self.brightnessSlider.setMaximum(100)
-        self.brightnessSlider.setValue(100)
-        self.brightnessSlider.setTickInterval(10)
+        # Intensity (Brightness) vertical slider
+        self.brightnessSlider = BrightnessSlider()
         self.brightnessSlider.valueChanged.connect(self.onBrightnessChanged)
-        self.brightnessValueLabel = QtGui.QLabel("1.00")
-        self.brightnessValueLabel.setFixedWidth(36)
-        intensityRow.addWidget(self.brightnessSlider)
-        intensityRow.addWidget(self.brightnessValueLabel)
-        mainLayout.addLayout(intensityRow)
+        wheelRow.addWidget(self.brightnessSlider, alignment=QtCore.Qt.AlignVCenter)
 
-        # Copy RGB buttons
-        btnLayout = QtGui.QHBoxLayout()
-        self.copyR = QtGui.QPushButton("Copy R")
-        self.copyG = QtGui.QPushButton("Copy G")
-        self.copyB = QtGui.QPushButton("Copy B")
-        self.copyR.clicked.connect(lambda: self.copyChannel('R'))
-        self.copyG.clicked.connect(lambda: self.copyChannel('G'))
-        self.copyB.clicked.connect(lambda: self.copyChannel('B'))
-        btnLayout.addWidget(self.copyR)
-        btnLayout.addWidget(self.copyG)
-        btnLayout.addWidget(self.copyB)
-        mainLayout.addLayout(btnLayout)
+        mainLayout.addLayout(wheelRow)
+
+        # HEX code display and copy button
+        hexRow = QtGui.QHBoxLayout()
+        self.hexLabel = QtGui.QLabel("#FFFFFF")
+        self.hexLabel.setStyleSheet("font-size: 13px;")
+        self.copyHexBtn = QtGui.QPushButton("Copy HEX")
+        self.copyHexBtn.clicked.connect(self.copyHex)
+        hexRow.addWidget(self.hexLabel)
+        hexRow.addWidget(self.copyHexBtn)
+        mainLayout.addLayout(hexRow)
 
         self.currentColor    = QtGui.QColor(255, 255, 255)
         self.currentR        = 1.0
         self.currentG        = 1.0
         self.currentB        = 1.0
         self.brightnessScale = 1.0
-        self.updatePreview(self.currentColor)
-
-    def simulateSFMDesaturation(self, color, brightnessScale):
-        h, s, v, a = color.getHsv()
-        s = int(s * 0.80)
-        v = int(v * brightnessScale)
-        adjusted = QtGui.QColor()
-        adjusted.setHsv(h, s, v)
-        return adjusted
 
     def onColorChanged(self, color):
-        self.updatePreview(color)
-        self._applyToLight()
-
-    def onBrightnessChanged(self, sliderValue):
-        self.brightnessScale = sliderValue / 100.0
-        self.brightnessValueLabel.setText("%.2f" % self.brightnessScale)
-        self.updatePreview(self.currentColor)
-        self._applyToLight()
-
-    def updatePreview(self, color):
         self.currentColor = color
+        self.currentR = color.red()   / 255.0
+        self.currentG = color.green() / 255.0
+        self.currentB = color.blue()  / 255.0
+        self.hexLabel.setText("#%02X%02X%02X" % (color.red(), color.green(), color.blue()))
+        self._applyToLight()
 
-        adjusted = self.simulateSFMDesaturation(color, self.brightnessScale)
-        self.preview.setStyleSheet(
-            "background-color: rgb(%d, %d, %d); border: 2px solid #555555; border-radius: 4px;"
-            % (adjusted.red(), adjusted.green(), adjusted.blue())
-        )
+    def onBrightnessChanged(self, value):
+        self.brightnessScale = value
+        self._applyToLight()
 
-        r = color.red()   / 255.0
-        g = color.green() / 255.0
-        b = color.blue()  / 255.0
-
-        self.currentR = r
-        self.currentG = g
-        self.currentB = b
-
-        self.rgbLabel.setText("R: %.3f | G: %.3f | B: %.3f" % (r, g, b))
+    def copyHex(self):
+        QtGui.QApplication.clipboard().setText(self.hexLabel.text())
 
     def _applyToLight(self):
         r = min(self.currentR * self.brightnessScale, 1.0)
@@ -305,14 +299,8 @@ class ColorWheelWindow(QtGui.QWidget):
         b = min(self.currentB * self.brightnessScale, 1.0)
         applyLightColor(self.targetAnimSet, r, g, b)
 
-    def copyChannel(self, channel):
-        val = {'R': self.currentR, 'G': self.currentG, 'B': self.currentB}[channel]
-        QtGui.QApplication.clipboard().setText("%.3f" % val)
-        print("Copied %s: %.3f" % (channel, val))
-
 try:
     currentAnimSet = sfm.GetCurrentAnimationSet()
-    print("[Color Wheel] Targeting: %s" % currentAnimSet.GetName())
 
     existing = globals().get(InternalName)
     if existing is not None:
