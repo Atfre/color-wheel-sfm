@@ -9,7 +9,7 @@ This script allows users to select a color for SFM lights, modify the brightness
 - Brightness/Intensity vertical slider
 - Preview that compensates SFM's light desaturation
 - Automatically changes the color of the light
-- HEX Code and a button to copy it
+- HEX Code and a button to copy it (Idea by: Dani3D)
 
 ---
 
